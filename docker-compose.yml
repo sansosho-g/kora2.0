@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  # MongoDB Service
+  mongodb:
+    image: mongo:7.0
+    container_name: langgraph-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password123
+      MONGO_INITDB_DATABASE: langgraph_db
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - ./mongo-init:/docker-entrypoint-initdb.d
+    networks:
+      - langgraph-network
+
+  # Backend Service (FastAPI + LangGraph)
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: langgraph-backend
+    restart: unless-stopped
+    environment:
+      - MONGODB_URI=mongodb://admin:password123@mongodb:27017/langgraph_db?authSource=admin
+      - MONGODB_DATABASE=langgraph_db
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - TAVILY_API_KEY=${TAVILY_API_KEY}
+    ports:
+      - "8001:8001"
+    depends_on:
+      - mongodb
+    networks:
+      - langgraph-network
+    volumes:
+      - ./app.py:/app/app.py
+      - ./requirements.txt:/app/requirements.txt
+
+  # Frontend Service (Next.js)
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://kora-langgraph-1.onrender.com}
+    container_name: langgraph-frontend
+    restart: unless-stopped
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://kora-langgraph-1.onrender.com}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - langgraph-network
+
+volumes:
+  mongodb_data:
+    driver: local
+
+networks:
+  langgraph-network:
+    driver: bridge 
